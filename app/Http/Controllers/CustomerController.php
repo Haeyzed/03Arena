@@ -75,9 +75,20 @@ class CustomerController extends Controller
             abort(403);
         }
 
+        $filters = $request->validate([
+            'search' => ['nullable', 'string', 'max:255'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
+        ]);
+
+        $search = $filters['search'] ?? null;
+        $dateFrom = isset($filters['date_from']) ? (string) $filters['date_from'] : null;
+        $dateTo = isset($filters['date_to']) ? (string) $filters['date_to'] : null;
+
         $transactions = Transaction::query()
             ->where('user_id', $request->user()->id)
             ->matchingCustomerName($customer->name)
+            ->filtered($search, $dateFrom, $dateTo)
             ->orderByDesc('creation_date')
             ->orderByDesc('id')
             ->paginate(15)
@@ -85,6 +96,11 @@ class CustomerController extends Controller
 
         return Inertia::render('customers/transactions', [
             'customer' => $customer->only(['id', 'name']),
+            'filters' => [
+                'search' => $search ?? '',
+                'date_from' => $dateFrom ?? '',
+                'date_to' => $dateTo ?? '',
+            ],
             'transactions' => $transactions,
         ]);
     }

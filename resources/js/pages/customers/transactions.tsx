@@ -1,5 +1,6 @@
-import { Head, Link } from '@inertiajs/react';
-import { ArrowLeft } from 'lucide-react';
+import { Head, Link, router, setLayoutProps } from '@inertiajs/react';
+import { ArrowLeft, Search, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { Pagination } from '@/components/pagination';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,6 +11,8 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
     Table,
     TableBody,
@@ -19,13 +22,14 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import customers from '@/routes/customers';
-import type { PaginatedTransactions } from '@/types';
+import type { PaginatedTransactions, TransactionFilters } from '@/types';
 
 type CustomerTransactionsProps = {
     customer: {
         id: number;
         name: string;
     };
+    filters: TransactionFilters;
     transactions: PaginatedTransactions;
 };
 
@@ -67,10 +71,173 @@ function statusVariant(
     return 'secondary';
 }
 
+function buildFilterQuery(
+    customerId: number,
+    filters: TransactionFilters,
+): Record<string, string> {
+    const query: Record<string, string> = {};
+
+    if (filters.search.trim() !== '') {
+        query.search = filters.search.trim();
+    }
+
+    if (filters.date_from !== '') {
+        query.date_from = filters.date_from;
+    }
+
+    if (filters.date_to !== '') {
+        query.date_to = filters.date_to;
+    }
+
+    return query;
+}
+
+function visitWithFilters(
+    customerId: number,
+    filters: TransactionFilters,
+): void {
+    router.get(
+        customers.transactions.url(customerId, {
+            query: buildFilterQuery(customerId, filters),
+        }),
+        {},
+        {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        },
+    );
+}
+
+function TransactionFiltersPanel({
+    customerId,
+    filters,
+}: {
+    customerId: number;
+    filters: TransactionFilters;
+}) {
+    const [search, setSearch] = useState(filters.search);
+    const [dateFrom, setDateFrom] = useState(filters.date_from);
+    const [dateTo, setDateTo] = useState(filters.date_to);
+    const isFirstSearchRender = useRef(true);
+
+    useEffect(() => {
+        if (isFirstSearchRender.current) {
+            isFirstSearchRender.current = false;
+
+            return;
+        }
+
+        const timeout = window.setTimeout(() => {
+            visitWithFilters(customerId, {
+                search,
+                date_from: dateFrom,
+                date_to: dateTo,
+            });
+        }, 300);
+
+        return () => window.clearTimeout(timeout);
+    }, [search, customerId]);
+
+    const hasActiveFilters =
+        filters.search !== '' ||
+        filters.date_from !== '' ||
+        filters.date_to !== '';
+
+    return (
+        <div className="flex flex-col gap-4">
+            <div className="relative">
+                <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                    type="search"
+                    placeholder="Search reference, status, client…"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    className="pl-9"
+                />
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+                <div className="grid gap-2">
+                    <Label htmlFor="date_from">From</Label>
+                    <Input
+                        id="date_from"
+                        type="date"
+                        value={dateFrom}
+                        onChange={(event) => setDateFrom(event.target.value)}
+                    />
+                </div>
+                <div className="grid gap-2">
+                    <Label htmlFor="date_to">To</Label>
+                    <Input
+                        id="date_to"
+                        type="date"
+                        value={dateTo}
+                        min={dateFrom || undefined}
+                        onChange={(event) => setDateTo(event.target.value)}
+                    />
+                </div>
+                <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() =>
+                        visitWithFilters(customerId, {
+                            search,
+                            date_from: dateFrom,
+                            date_to: dateTo,
+                        })
+                    }
+                >
+                    Apply dates
+                </Button>
+                {hasActiveFilters && (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                            setSearch('');
+                            setDateFrom('');
+                            setDateTo('');
+                            visitWithFilters(customerId, {
+                                search: '',
+                                date_from: '',
+                                date_to: '',
+                            });
+                        }}
+                    >
+                        <X />
+                        Clear filters
+                    </Button>
+                )}
+            </div>
+        </div>
+    );
+}
+
 export default function CustomerTransactions({
     customer,
+    filters: initialFilters,
     transactions,
 }: CustomerTransactionsProps) {
+    useEffect(() => {
+        setLayoutProps({
+            breadcrumbs: [
+                {
+                    title: 'Customers',
+                    href: customers.index(),
+                },
+                {
+                    title: customer.name,
+                    href: customers.transactions.url(customer.id),
+                },
+            ],
+        });
+    }, [customer.id, customer.name]);
+
+    const hasActiveFilters =
+        initialFilters.search !== '' ||
+        initialFilters.date_from !== '' ||
+        initialFilters.date_to !== '';
+
     return (
         <>
             <Head title={`${customer.name} — Transactions`} />
@@ -78,7 +245,7 @@ export default function CustomerTransactions({
             <div className="flex h-full flex-1 flex-col gap-6 overflow-x-auto rounded-xl p-4">
                 <div>
                     <Button variant="outline" size="sm" asChild>
-                        <Link href={customers.index()}>
+                        <Link href={customers.index.url()}>
                             <ArrowLeft />
                             Back to customers
                         </Link>
@@ -89,13 +256,20 @@ export default function CustomerTransactions({
                     <CardHeader>
                         <CardTitle>{customer.name}</CardTitle>
                         <CardDescription>
-                            Transactions where this name appears as client or
-                            counterparty — {transactions.total.toLocaleString()}{' '}
-                            records, page {transactions.current_page} of{' '}
+                            Transactions where counterparty name matches this
+                            customer exactly —{' '}
+                            {transactions.total.toLocaleString()} records, page{' '}
+                            {transactions.current_page} of{' '}
                             {transactions.last_page}
                         </CardDescription>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="space-y-4">
+                        <TransactionFiltersPanel
+                            key={`${initialFilters.search}-${initialFilters.date_from}-${initialFilters.date_to}`}
+                            customerId={customer.id}
+                            filters={initialFilters}
+                        />
+
                         <Table>
                             <TableHeader>
                                 <TableRow>
@@ -117,8 +291,9 @@ export default function CustomerTransactions({
                                             colSpan={7}
                                             className="h-24 text-center text-muted-foreground"
                                         >
-                                            No transactions found for this
-                                            customer name.
+                                            {hasActiveFilters
+                                                ? 'No transactions match your filters.'
+                                                : `No transactions found with counterparty name "${customer.name}".`}
                                         </TableCell>
                                     </TableRow>
                                 ) : (
@@ -185,16 +360,3 @@ export default function CustomerTransactions({
         </>
     );
 }
-
-CustomerTransactions.layout = {
-    breadcrumbs: [
-        {
-            title: 'Customers',
-            href: customers.index(),
-        },
-        {
-            title: customer.name,
-            href: customers.transactions.url(customer.id),
-        },
-    ],
-};

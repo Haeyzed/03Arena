@@ -185,8 +185,8 @@ export default function CustomersIndex({ customers: paginated }: CustomersIndexP
                     <DialogHeader>
                         <DialogTitle>Add customer</DialogTitle>
                         <DialogDescription>
-                            Enter the customer name. It will be matched against
-                            client and counterparty names on transactions.
+                            Enter the customer name. It must match the
+                            counterparty name on transactions exactly.
                         </DialogDescription>
                     </DialogHeader>
                     <Form
