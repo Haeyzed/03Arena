@@ -44,8 +44,8 @@ class DashboardController extends Controller
             ->selectRaw('COUNT(*) as total_count')
             ->selectRaw('COALESCE(SUM(net_amount), 0) as total_net')
             ->selectRaw('COALESCE(SUM(fee), 0) as total_fees')
-            ->selectRaw("COALESCE(SUM(CASE WHEN net_amount > 0 THEN net_amount ELSE 0 END), 0) as total_inbound")
-            ->selectRaw("COALESCE(SUM(CASE WHEN net_amount < 0 THEN ABS(net_amount) ELSE 0 END), 0) as total_outbound")
+            ->selectRaw('COALESCE(SUM(CASE WHEN net_amount > 0 THEN net_amount ELSE 0 END), 0) as total_inbound')
+            ->selectRaw('COALESCE(SUM(CASE WHEN net_amount < 0 THEN ABS(net_amount) ELSE 0 END), 0) as total_outbound')
             ->first();
 
         $chartData = $baseQuery()
@@ -93,14 +93,21 @@ class DashboardController extends Controller
 
     public function import(ImportTransactionsRequest $request): RedirectResponse
     {
-        Excel::import(
-            new TransactionsImport($request->user()->id),
-            $request->file('file'),
-        );
+        $import = new TransactionsImport($request->user()->id);
+
+        Excel::import($import, $request->file('file'));
+
+        $message = __('Transactions imported successfully.');
+
+        if ($import->customersCreated > 0) {
+            $message .= ' '.__(':count new customer(s) created from counterparty names.', [
+                'count' => $import->customersCreated,
+            ]);
+        }
 
         Inertia::flash('toast', [
             'type' => 'success',
-            'message' => __('Transactions imported successfully.'),
+            'message' => $message,
         ]);
 
         return to_route('dashboard');

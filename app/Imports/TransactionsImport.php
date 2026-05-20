@@ -2,6 +2,7 @@
 
 namespace App\Imports;
 
+use App\Models\Customer;
 use App\Models\Transaction;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -11,6 +12,8 @@ use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 
 class TransactionsImport implements ToCollection, WithHeadingRow
 {
+    public int $customersCreated = 0;
+
     public function __construct(
         private readonly int $userId,
     ) {}
@@ -22,6 +25,8 @@ class TransactionsImport implements ToCollection, WithHeadingRow
 
     public function collection(Collection $rows): void
     {
+        $counterpartyNames = collect();
+
         foreach ($rows as $row) {
             $data = $row instanceof Collection ? $row->toArray() : (array) $row;
 
@@ -29,6 +34,15 @@ class TransactionsImport implements ToCollection, WithHeadingRow
 
             if ($referenceUuid === null) {
                 continue;
+            }
+
+            $counterpartyName = $this->stringValue($data, [
+                'name',
+                'counterparty_name',
+            ]);
+
+            if ($counterpartyName !== null) {
+                $counterpartyNames->push($counterpartyName);
             }
 
             Transaction::query()->updateOrCreate(
@@ -51,12 +65,33 @@ class TransactionsImport implements ToCollection, WithHeadingRow
                     'fee' => $this->amountValue($data, ['fee']),
                     'calc_fee' => $this->amountValue($data, ['calc_fee']),
                     'counterparty_reference' => $this->stringValue($data, ['reference']),
-                    'counterparty_name' => $this->stringValue($data, ['name']),
+                    'counterparty_name' => $counterpartyName,
                     'bank_name' => $this->stringValue($data, ['bank_name']),
                     'cross_border' => $this->stringValue($data, ['cross_border']),
                     'comments' => $this->stringValue($data, ['comments']),
                 ],
             );
+        }
+
+        $this->syncCustomersFromCounterpartyNames($counterpartyNames->unique()->values());
+    }
+
+    /**
+     * @param  Collection<int, string>  $counterpartyNames
+     */
+    private function syncCustomersFromCounterpartyNames(Collection $counterpartyNames): void
+    {
+        foreach ($counterpartyNames as $name) {
+            $customer = Customer::query()->firstOrCreate(
+                [
+                    'user_id' => $this->userId,
+                    'name' => $name,
+                ],
+            );
+
+            if ($customer->wasRecentlyCreated) {
+                $this->customersCreated++;
+            }
         }
     }
 
