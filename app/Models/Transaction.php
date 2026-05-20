@@ -87,4 +87,16 @@ class Transaction extends Model
 
         return $query;
     }
+
+    /**
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeMatchingCustomerName(Builder $query, string $name): Builder
+    {
+        return $query->where(function (Builder $inner) use ($name): void {
+            $inner->where('client_name', $name)
+                ->orWhere('counterparty_name', $name);
+        });
+    }
 }
