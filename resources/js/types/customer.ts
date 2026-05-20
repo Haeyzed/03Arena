@@ -1,3 +1,9 @@
+export type CustomerFilters = {
+    search: string;
+    with_transactions: boolean;
+    transactions_on: string;
+};
+
 export type CustomerRecord = {
     id: number;
     name: string;

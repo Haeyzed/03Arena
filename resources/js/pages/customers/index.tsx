@@ -1,6 +1,6 @@
 import { Form, Head, router } from '@inertiajs/react';
-import { Eye, Pencil, Plus, Trash2, Users } from 'lucide-react';
-import { useState } from 'react';
+import { Eye, Pencil, Plus, Search, Trash2, Users, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import CustomerController from '@/actions/App/Http/Controllers/CustomerController';
 import InputError from '@/components/input-error';
 import { Pagination } from '@/components/pagination';
@@ -20,6 +20,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -31,17 +32,184 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import customers from '@/routes/customers';
-import type { CustomerRecord, PaginatedCustomers } from '@/types';
+import type {
+    CustomerFilters,
+    CustomerRecord,
+    PaginatedCustomers,
+} from '@/types';
 
 type CustomersIndexProps = {
     customers: PaginatedCustomers;
+    filters: CustomerFilters;
 };
 
 function openDialog(callback: () => void): void {
     window.setTimeout(callback, 0);
 }
 
-export default function CustomersIndex({ customers: paginated }: CustomersIndexProps) {
+function todayDateString(): string {
+    const now = new Date();
+
+    return [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, '0'),
+        String(now.getDate()).padStart(2, '0'),
+    ].join('-');
+}
+
+function buildFilterQuery(filters: CustomerFilters): Record<string, string> {
+    const query: Record<string, string> = {};
+
+    if (filters.search.trim() !== '') {
+        query.search = filters.search.trim();
+    }
+
+    if (filters.with_transactions) {
+        query.with_transactions = '1';
+        query.transactions_on = filters.transactions_on;
+    }
+
+    return query;
+}
+
+function visitWithFilters(filters: CustomerFilters): void {
+    router.get(
+        customers.index.url({ query: buildFilterQuery(filters) }),
+        {},
+        {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        },
+    );
+}
+
+function hasActiveFilters(filters: CustomerFilters): boolean {
+    return filters.search !== '' || filters.with_transactions;
+}
+
+function CustomerFiltersBar({ filters }: { filters: CustomerFilters }) {
+    const [search, setSearch] = useState(filters.search);
+    const [withTransactions, setWithTransactions] = useState(
+        filters.with_transactions,
+    );
+    const [transactionsOn, setTransactionsOn] = useState(
+        filters.transactions_on || todayDateString(),
+    );
+    const isFirstSearchRender = useRef(true);
+
+    useEffect(() => {
+        if (isFirstSearchRender.current) {
+            isFirstSearchRender.current = false;
+
+            return;
+        }
+
+        const timeout = window.setTimeout(() => {
+            visitWithFilters({
+                search,
+                with_transactions: withTransactions,
+                transactions_on: transactionsOn,
+            });
+        }, 300);
+
+        return () => window.clearTimeout(timeout);
+    }, [search]);
+
+    const applyTransactionFilter = (
+        enabled: boolean,
+        date: string,
+    ): void => {
+        visitWithFilters({
+            search,
+            with_transactions: enabled,
+            transactions_on: date,
+        });
+    };
+
+    return (
+        <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="relative flex-1">
+                    <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                        type="search"
+                        placeholder="Search customers by name…"
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)}
+                        className="pl-9"
+                    />
+                </div>
+                {hasActiveFilters(filters) && (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                            const today = todayDateString();
+
+                            setSearch('');
+                            setWithTransactions(false);
+                            setTransactionsOn(today);
+                            visitWithFilters({
+                                search: '',
+                                with_transactions: false,
+                                transactions_on: today,
+                            });
+                        }}
+                    >
+                        <X />
+                        Clear
+                    </Button>
+                )}
+            </div>
+
+            <div className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:flex-wrap sm:items-end">
+                <div className="flex items-center gap-3">
+                    <Checkbox
+                        id="with_transactions"
+                        checked={withTransactions}
+                        onCheckedChange={(checked) => {
+                            const enabled = checked === true;
+                            const date = transactionsOn || todayDateString();
+
+                            setWithTransactions(enabled);
+                            applyTransactionFilter(enabled, date);
+                        }}
+                    />
+                    <Label
+                        htmlFor="with_transactions"
+                        className="cursor-pointer text-sm font-normal"
+                    >
+                        Only customers with transactions on
+                    </Label>
+                </div>
+                <div className="grid gap-2">
+                    <Label htmlFor="transactions_on">Date</Label>
+                    <Input
+                        id="transactions_on"
+                        type="date"
+                        value={transactionsOn}
+                        disabled={!withTransactions}
+                        onChange={(event) => {
+                            const date = event.target.value;
+
+                            setTransactionsOn(date);
+
+                            if (withTransactions && date !== '') {
+                                applyTransactionFilter(true, date);
+                            }
+                        }}
+                    />
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export default function CustomersIndex({
+    customers: paginated,
+    filters: initialFilters,
+}: CustomersIndexProps) {
     const [createOpen, setCreateOpen] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState<CustomerRecord | null>(
         null,
@@ -50,6 +218,8 @@ export default function CustomersIndex({ customers: paginated }: CustomersIndexP
     const [deletingCustomer, setDeletingCustomer] = useState<CustomerRecord | null>(
         null,
     );
+
+    const activeFilters = hasActiveFilters(initialFilters);
 
     return (
         <>
@@ -77,7 +247,11 @@ export default function CustomersIndex({ customers: paginated }: CustomersIndexP
                             Add customer
                         </Button>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="space-y-4">
+                        <CustomerFiltersBar
+                            key={`${initialFilters.search}-${initialFilters.with_transactions}-${initialFilters.transactions_on}`}
+                            filters={initialFilters}
+                        />
                         <Table>
                             <TableHeader>
                                 <TableRow>
@@ -95,8 +269,9 @@ export default function CustomersIndex({ customers: paginated }: CustomersIndexP
                                             colSpan={3}
                                             className="h-24 text-center text-muted-foreground"
                                         >
-                                            No customers yet. Add your first
-                                            customer.
+                                            {activeFilters
+                                                ? 'No customers match your filters.'
+                                                : 'No customers yet. Add your first customer.'}
                                         </TableCell>
                                     </TableRow>
                                 ) : (

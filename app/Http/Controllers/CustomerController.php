@@ -15,14 +15,42 @@ class CustomerController extends Controller
 {
     public function index(Request $request): Response
     {
+        $filters = $request->validate([
+            'search' => ['nullable', 'string', 'max:255'],
+            'with_transactions' => ['nullable', 'boolean'],
+            'transactions_on' => ['nullable', 'date'],
+        ]);
+
+        $userId = $request->user()->id;
+        $search = $filters['search'] ?? null;
+        $withTransactions = $request->boolean('with_transactions');
+        $transactionsOn = ($filters['transactions_on'] ?? '') !== ''
+            ? (string) $filters['transactions_on']
+            : now()->toDateString();
+
         $customers = Customer::query()
-            ->where('user_id', $request->user()->id)
+            ->where('user_id', $userId)
+            ->when($search, fn ($query) => $query->where('name', 'like', '%'.$search.'%'))
+            ->when($withTransactions, function ($query) use ($userId, $transactionsOn): void {
+                $query->whereExists(function ($subQuery) use ($userId, $transactionsOn): void {
+                    $subQuery->selectRaw('1')
+                        ->from('transactions')
+                        ->whereColumn('transactions.counterparty_name', 'customers.name')
+                        ->where('transactions.user_id', $userId)
+                        ->whereDate('transactions.creation_date', $transactionsOn);
+                });
+            })
             ->orderBy('name')
             ->paginate(15)
             ->withQueryString();
 
         return Inertia::render('customers/index', [
             'customers' => $customers,
+            'filters' => [
+                'search' => $search ?? '',
+                'with_transactions' => $withTransactions,
+                'transactions_on' => $transactionsOn,
+            ],
         ]);
     }
 
