@@ -71,6 +71,26 @@ function statusVariant(
     return 'secondary';
 }
 
+function todayDateString(): string {
+    const now = new Date();
+
+    return [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, '0'),
+        String(now.getDate()).padStart(2, '0'),
+    ].join('-');
+}
+
+function filtersDifferFromDefault(filters: TransactionFilters): boolean {
+    const today = todayDateString();
+
+    return (
+        filters.search !== '' ||
+        filters.date_from !== today ||
+        filters.date_to !== today
+    );
+}
+
 function buildFilterQuery(
     customerId: number,
     filters: TransactionFilters,
@@ -139,10 +159,7 @@ function TransactionFiltersPanel({
         return () => window.clearTimeout(timeout);
     }, [search, customerId]);
 
-    const hasActiveFilters =
-        filters.search !== '' ||
-        filters.date_from !== '' ||
-        filters.date_to !== '';
+    const hasActiveFilters = filtersDifferFromDefault(filters);
 
     return (
         <div className="flex flex-col gap-4">
@@ -194,13 +211,15 @@ function TransactionFiltersPanel({
                         type="button"
                         variant="outline"
                         onClick={() => {
+                            const today = todayDateString();
+
                             setSearch('');
-                            setDateFrom('');
-                            setDateTo('');
+                            setDateFrom(today);
+                            setDateTo(today);
                             visitWithFilters(customerId, {
                                 search: '',
-                                date_from: '',
-                                date_to: '',
+                                date_from: today,
+                                date_to: today,
                             });
                         }}
                     >
@@ -233,10 +252,7 @@ export default function CustomerTransactions({
         });
     }, [customer.id, customer.name]);
 
-    const hasActiveFilters =
-        initialFilters.search !== '' ||
-        initialFilters.date_from !== '' ||
-        initialFilters.date_to !== '';
+    const hasActiveFilters = filtersDifferFromDefault(initialFilters);
 
     return (
         <>

@@ -81,9 +81,15 @@ class CustomerController extends Controller
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
         ]);
 
+        $today = now()->toDateString();
+
         $search = $filters['search'] ?? null;
-        $dateFrom = isset($filters['date_from']) ? (string) $filters['date_from'] : null;
-        $dateTo = isset($filters['date_to']) ? (string) $filters['date_to'] : null;
+        $dateFrom = ($filters['date_from'] ?? '') !== ''
+            ? (string) $filters['date_from']
+            : $today;
+        $dateTo = ($filters['date_to'] ?? '') !== ''
+            ? (string) $filters['date_to']
+            : $today;
 
         $transactions = Transaction::query()
             ->where('user_id', $request->user()->id)
